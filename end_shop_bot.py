@@ -184,7 +184,3 @@ def callback_handler(call):
             reply_markup=kb
         )
         return
-
-#if __name__ == "__main__":
-    #print("Бот End_Shop запущен...")
-    #bot.polling(none_stop=True)
