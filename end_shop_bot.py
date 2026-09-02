@@ -18,7 +18,7 @@ CRYPTO_WALLET = "TLeks35ftpFc3NgGr2AAfzmg3dkCVyHTUz"
 USD_TO_UAH = 45.0
 
 # ID администратора (узнайте у @userinfobot)
-ADMIN_ID = 2129276976  # замените на свой
+ADMIN_ID = 2129276976  # ваш ID
 
 # ----------------------------------------
 #  ИНИЦИАЛИЗАЦИЯ
@@ -31,7 +31,7 @@ PRODUCTS = {
     "50":  {"name": "50 Random Titan Temples Egg", "price": 3.00, "emoji": "🥚"},
     "100": {"name": "100 Random Titan Temples Egg", "price": 5.00, "emoji": "🥚"},
     "1000":{"name": "1000 Random Titan Temples Egg", "price": 30.00, "emoji": "🥚"},
-    "secret": {"name": "1 Random Secret Egg", "price": 10.00, "emoji": "✨"}
+    "secret": {"name": "1 Random Secret Egg", "price": 1.00, "emoji": "✨"}
 }
 
 carts = {}
@@ -71,7 +71,18 @@ def main_menu_keyboard():
     )
     return kb
 
+def categories_keyboard():
+    """Меню выбора категории в Steal an Egg"""
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        types.InlineKeyboardButton("🦖🥚 Titan Temples Eggs", callback_data="category_titan"),
+        types.InlineKeyboardButton("🌍 Любая локация", callback_data="category_location"),
+        types.InlineKeyboardButton("⬅️ Назад", callback_data="back_main")
+    )
+    return kb
+
 def products_keyboard():
+    """Список товаров (для категории Titan Temples Eggs)"""
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
         types.InlineKeyboardButton("🥚 10 яиц - $0.50", callback_data="buy_10"),
@@ -79,8 +90,8 @@ def products_keyboard():
         types.InlineKeyboardButton("🥚 50 яиц - $3.00", callback_data="buy_50"),
         types.InlineKeyboardButton("🥚 100 яиц - $5.00", callback_data="buy_100"),
         types.InlineKeyboardButton("🥚 1000 яиц - $30.00", callback_data="buy_1000"),
-        types.InlineKeyboardButton("✨ Secret Egg - $10.00", callback_data="buy_secret"),
-        types.InlineKeyboardButton("⬅️ Назад", callback_data="back_main")
+        types.InlineKeyboardButton("✨ Secret Egg - $1.00", callback_data="buy_secret"),
+        types.InlineKeyboardButton("⬅️ Назад", callback_data="back_categories")
     )
     return kb
 
@@ -128,6 +139,7 @@ def callback_handler(call):
     user_id = call.from_user.id
     data = call.data
 
+    # ---- НАЗАД В ГЛАВНОЕ МЕНЮ ----
     if data == "back_main":
         bot.edit_message_text(
             "🏪 Главное меню\nВыберите действие:",
@@ -136,14 +148,45 @@ def callback_handler(call):
         )
         return
 
-    if data == "steal":
-        text = "🥚 Выберите товар:\n\nНажмите «Купить» под нужным товаром."
+    # ---- НАЗАД В МЕНЮ КАТЕГОРИЙ (из списка товаров) ----
+    if data == "back_categories":
         bot.edit_message_text(
-            text, user_id, call.message.message_id,
+            "🥚 Выберите категорию:",
+            user_id, call.message.message_id,
+            reply_markup=categories_keyboard()
+        )
+        return
+
+    # ---- STEAL AN EGG (показываем категории) ----
+    if data == "steal":
+        bot.edit_message_text(
+            "🥚 Выберите категорию:",
+            user_id, call.message.message_id,
+            reply_markup=categories_keyboard()
+        )
+        return
+
+    # ---- КАТЕГОРИЯ: TITAN TEMPLES EGGS ----
+    if data == "category_titan":
+        bot.edit_message_text(
+            "🦖🥚 Titan Temples Eggs\nВыберите товар:",
+            user_id, call.message.message_id,
             reply_markup=products_keyboard()
         )
         return
 
+    # ---- КАТЕГОРИЯ: ЛЮБАЯ ЛОКАЦИЯ (нет в наличии) ----
+    if data == "category_location":
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="back_categories"))
+        bot.edit_message_text(
+            "🌍 Любая локация\n\nК сожалению, товаров в этой категории пока нет.\nОжидайте поступления!",
+            user_id, call.message.message_id,
+            reply_markup=kb
+        )
+        return
+
+    # ---- ПОКУПКА ТОВАРА ----
     if data.startswith("buy_"):
         key = data.split("_")[1]
         product = PRODUCTS.get(key)
@@ -160,6 +203,7 @@ def callback_handler(call):
         bot.answer_callback_query(call.id, f"✅ {product['name']} добавлен в корзину!")
         return
 
+    # ---- КОРЗИНА ----
     if data == "cart":
         cart = get_cart(user_id)
         if not cart:
@@ -172,6 +216,7 @@ def callback_handler(call):
         )
         return
 
+    # ---- ОЧИСТИТЬ КОРЗИНУ ----
     if data == "clear_cart":
         clear_cart(user_id)
         bot.answer_callback_query(call.id, "🗑️ Корзина очищена.")
@@ -182,6 +227,7 @@ def callback_handler(call):
         )
         return
 
+    # ---- ОФОРМЛЕНИЕ ЗАКАЗА ----
     if data == "checkout":
         cart = get_cart(user_id)
         if not cart:
@@ -199,7 +245,7 @@ def callback_handler(call):
         )
         return
 
-    # ----- ОПЛАТА В ГРИВНАХ (ПЕРЕВОД НА КАРТУ) -----
+    # ----- ОПЛАТА В ГРИВНАХ -----
     if data == "pay_uah":
         cart = get_cart(user_id)
         if not cart:
@@ -254,7 +300,7 @@ def callback_handler(call):
         )
         return
 
-    # ----- ОПЛАТА В КРИПТОВАЛЮТЕ (USDT TRC20) -----
+    # ----- ОПЛАТА В КРИПТОВАЛЮТЕ -----
     if data == "pay_crypto":
         cart = get_cart(user_id)
         if not cart:
