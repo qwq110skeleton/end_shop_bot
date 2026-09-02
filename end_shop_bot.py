@@ -72,7 +72,6 @@ def main_menu_keyboard():
     return kb
 
 def categories_keyboard():
-    """Меню выбора категории в Steal an Egg"""
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
         types.InlineKeyboardButton("🦖🥚 Titan Temples Eggs", callback_data="category_titan"),
@@ -82,7 +81,6 @@ def categories_keyboard():
     return kb
 
 def products_keyboard():
-    """Список товаров (для категории Titan Temples Eggs)"""
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
         types.InlineKeyboardButton("🥚 10 яиц - $0.50", callback_data="buy_10"),
@@ -121,6 +119,12 @@ def payment_choice_keyboard():
     )
     return kb
 
+def get_reply_keyboard():
+    """Нижняя клавиатура с кнопкой «🏪 Магазин»"""
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+    kb.add(types.KeyboardButton("🏪 Магазин"))
+    return kb
+
 # ----------------------------------------
 #  ОБРАБОТЧИКИ
 # ----------------------------------------
@@ -132,7 +136,24 @@ def start(message):
         "Мы предлагаем товары для Roblox.\n"
         "Используйте кнопки ниже, чтобы начать."
     )
-    bot.send_message(user_id, text, reply_markup=main_menu_keyboard())
+    # Отправляем главное меню (Inline)
+    bot.send_message(
+        user_id,
+        text,
+        reply_markup=main_menu_keyboard()
+    )
+    # Отправляем отдельное сообщение с Reply-клавиатурой (нижняя кнопка)
+    bot.send_message(
+        user_id,
+        "Нажмите «🏪 Магазин» в любой момент, чтобы вернуться в главное меню.",
+        reply_markup=get_reply_keyboard()
+    )
+
+# Обработчик нажатия на нижнюю кнопку «🏪 Магазин»
+@bot.message_handler(func=lambda message: message.text == "🏪 Магазин")
+def open_shop(message):
+    # Просто вызываем функцию start, чтобы показать главное меню
+    start(message)
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
