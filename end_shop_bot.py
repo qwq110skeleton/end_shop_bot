@@ -5,7 +5,7 @@ import time
 # ----------------------------------------
 #  НАСТРОЙКИ (замените на свои)
 # ----------------------------------------
-TOKEN = "8941419428:AAFC_K6_Obbm5PhNhXc94bBBNko_iShFCpo"  # от @BotFather
+TOKEN = "8941419428:AAH2Swtq0H0-jDRa3-NGXbdmdOh0Wgks9Ms"  # от @BotFather
 
 # Реквизиты для оплаты в гривнах (перевод на карту)
 CARD_NUMBER = "4874 0700 6277 8863"
