@@ -35,6 +35,7 @@ PRODUCTS = {
 }
 
 carts = {}
+first_purchase = {}  # user_id -> bool (была ли уже первая покупка)
 
 def get_cart(user_id):
     return carts.get(user_id, [])
@@ -49,15 +50,22 @@ def clear_cart(user_id):
 def get_total(cart):
     return sum(item["price"] for item in cart)
 
-def format_cart(cart):
+def format_cart(cart, user_id=None):
     if not cart:
         return "🛒 Корзина пуста."
     lines = []
     for item in cart:
         lines.append(f"{item['emoji']} {item['name']} — ${item['price']:.2f}")
     total = get_total(cart)
-    lines.append(f"\n💰 Итого: ${total:.2f}  (~ {total * USD_TO_UAH:.2f} грн)")
-    return "\n".join(lines)
+    # Проверяем, есть ли скидка на первую покупку
+    if user_id and not first_purchase.get(user_id, False):
+        discount_total = total * 0.5
+        lines.append(f"\n💰 Итого без скидки: ${total:.2f} (~ {total * USD_TO_UAH:.2f} грн)")
+        lines.append(f"🎁 Скидка 50% на первую покупку! Сумма к оплате: **${discount_total:.2f}** (~ {discount_total * USD_TO_UAH:.2f} грн)")
+        return "\n".join(lines)
+    else:
+        lines.append(f"\n💰 Итого: ${total:.2f}  (~ {total * USD_TO_UAH:.2f} грн)")
+        return "\n".join(lines)
 
 # ----------------------------------------
 #  КЛАВИАТУРЫ
@@ -119,10 +127,23 @@ def payment_choice_keyboard():
     )
     return kb
 
+def info_keyboard():
+    """Клавиатура для раздела Информация"""
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        types.InlineKeyboardButton("📌 Как проходит сделка", callback_data="info_deal"),
+        types.InlineKeyboardButton("💳 Как оплатить", callback_data="info_pay"),
+        types.InlineKeyboardButton("⬅️ Назад", callback_data="back_main")
+    )
+    return kb
+
 def get_reply_keyboard():
-    """Нижняя клавиатура с кнопкой «🏪 Магазин»"""
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-    kb.add(types.KeyboardButton("🏪 Магазин"))
+    """Нижняя клавиатура с кнопками «Магазин» и «Информация»"""
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    kb.add(
+        types.KeyboardButton("🏪 Магазин"),
+        types.KeyboardButton("ℹ️ Информация")
+    )
     return kb
 
 # ----------------------------------------
@@ -134,26 +155,40 @@ def start(message):
     text = (
         "🏪 Добро пожаловать в End_Shop!\n\n"
         "Мы предлагаем товары для Roblox.\n"
-        "Используйте кнопки ниже, чтобы начать."
+        "Используйте кнопки ниже, чтобы начать.\n\n"
+        "🎁 **Ваша первая покупка со скидкой 50%!**\n"
+        "Просто добавьте товары в корзину и оформите заказ – скидка применится автоматически."
     )
     # Отправляем главное меню (Inline)
     bot.send_message(
         user_id,
         text,
-        reply_markup=main_menu_keyboard()
+        reply_markup=main_menu_keyboard(),
+        parse_mode="Markdown"
     )
     # Отправляем отдельное сообщение с Reply-клавиатурой (нижняя кнопка)
     bot.send_message(
         user_id,
-        "Нажмите «🏪 Магазин» в любой момент, чтобы вернуться в главное меню.",
+        "Нажмите «🏪 Магазин» для главного меню или «ℹ️ Информация» для справки.",
         reply_markup=get_reply_keyboard()
     )
 
 # Обработчик нажатия на нижнюю кнопку «🏪 Магазин»
 @bot.message_handler(func=lambda message: message.text == "🏪 Магазин")
 def open_shop(message):
-    # Просто вызываем функцию start, чтобы показать главное меню
-    start(message)
+    start(message)  # повторно вызываем функцию start
+
+# Обработчик нажатия на нижнюю кнопку «ℹ️ Информация»
+@bot.message_handler(func=lambda message: message.text == "ℹ️ Информация")
+def info_menu(message):
+    user_id = message.from_user.id
+    text = "ℹ️ **Информация**\n\nВыберите интересующий вас раздел:"
+    bot.send_message(
+        user_id,
+        text,
+        reply_markup=info_keyboard(),
+        parse_mode="Markdown"
+    )
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
@@ -230,10 +265,11 @@ def callback_handler(call):
         if not cart:
             text = "🛒 Ваша корзина пуста."
         else:
-            text = f"🛒 Ваша корзина:\n\n{format_cart(cart)}"
+            text = f"🛒 Ваша корзина:\n\n{format_cart(cart, user_id)}"
         bot.edit_message_text(
             text, user_id, call.message.message_id,
-            reply_markup=cart_keyboard()
+            reply_markup=cart_keyboard(),
+            parse_mode="Markdown"
         )
         return
 
@@ -255,14 +291,27 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "Корзина пуста!")
             return
         total = get_total(cart)
-        text = (
-            f"💳 Оформление заказа\n\n"
-            f"Сумма: ${total:.2f} (~ {total * USD_TO_UAH:.2f} грн)\n\n"
-            "Выберите способ оплаты:"
-        )
+        # Применяем скидку, если первая покупка
+        is_first = not first_purchase.get(user_id, False)
+        if is_first:
+            discount_total = total * 0.5
+            text = (
+                f"💳 Оформление заказа\n\n"
+                f"Сумма без скидки: ${total:.2f} (~ {total * USD_TO_UAH:.2f} грн)\n"
+                f"🎁 Скидка 50% на первую покупку!\n"
+                f"Сумма к оплате: **${discount_total:.2f}** (~ {discount_total * USD_TO_UAH:.2f} грн)\n\n"
+                "Выберите способ оплаты:"
+            )
+        else:
+            text = (
+                f"💳 Оформление заказа\n\n"
+                f"Сумма: ${total:.2f} (~ {total * USD_TO_UAH:.2f} грн)\n\n"
+                "Выберите способ оплаты:"
+            )
         bot.edit_message_text(
             text, user_id, call.message.message_id,
-            reply_markup=payment_choice_keyboard()
+            reply_markup=payment_choice_keyboard(),
+            parse_mode="Markdown"
         )
         return
 
@@ -273,7 +322,12 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "Корзина пуста!")
             return
         total = get_total(cart)
-        amount_uah = total * USD_TO_UAH
+        # Проверяем первую покупку и применяем скидку
+        is_first = not first_purchase.get(user_id, False)
+        if is_first:
+            amount_uah = total * 0.5 * USD_TO_UAH
+        else:
+            amount_uah = total * USD_TO_UAH
         text = (
             f"🇺🇦 Оплата в гривнах\n\n"
             f"Сумма к оплате: **{amount_uah:.2f} грн**\n\n"
@@ -300,7 +354,12 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "Корзина уже пуста.")
             return
         total = get_total(cart)
-        amount_uah = total * USD_TO_UAH
+        is_first = not first_purchase.get(user_id, False)
+        if is_first:
+            amount_uah = total * 0.5 * USD_TO_UAH
+            first_purchase[user_id] = True  # помечаем, что первая покупка совершена
+        else:
+            amount_uah = total * USD_TO_UAH
         admin_text = (
             f"🔔 Новая оплата в гривнах!\n"
             f"Пользователь: @{call.from_user.username or call.from_user.first_name}\n"
@@ -315,7 +374,8 @@ def callback_handler(call):
         clear_cart(user_id)
         bot.answer_callback_query(call.id, "✅ Заказ отправлен на подтверждение!")
         bot.edit_message_text(
-            "✅ Ваш заказ принят! Администратор проверит оплату и свяжется с вами.",
+            "✅ Ваш заказ принят! Администратор проверит оплату и свяжется с вами.\n\n"
+            "⏳ Обычно это занимает до 1 часа.",
             user_id, call.message.message_id,
             reply_markup=main_menu_keyboard()
         )
@@ -328,9 +388,14 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "Корзина пуста!")
             return
         total = get_total(cart)
+        is_first = not first_purchase.get(user_id, False)
+        if is_first:
+            amount_usdt = total * 0.5
+        else:
+            amount_usdt = total
         text = (
             f"₿ Оплата в криптовалюте\n\n"
-            f"Сумма: **{total:.2f} USDT** (TRC20)\n\n"
+            f"Сумма: **{amount_usdt:.2f} USDT** (TRC20)\n\n"
             f"Переведите точную сумму на адрес:\n"
             f"`{CRYPTO_WALLET}`\n\n"
             f"После перевода нажмите «✅ Я оплатил»."
@@ -353,11 +418,17 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "Корзина уже пуста.")
             return
         total = get_total(cart)
+        is_first = not first_purchase.get(user_id, False)
+        if is_first:
+            amount_usdt = total * 0.5
+            first_purchase[user_id] = True
+        else:
+            amount_usdt = total
         admin_text = (
             f"🔔 Новая оплата криптовалютой!\n"
             f"Пользователь: @{call.from_user.username or call.from_user.first_name}\n"
             f"ID: {user_id}\n"
-            f"Сумма: ${total:.2f}\n"
+            f"Сумма: ${amount_usdt:.2f}\n"
             f"Товары: {', '.join([item['name'] for item in cart])}"
         )
         try:
@@ -367,9 +438,55 @@ def callback_handler(call):
         clear_cart(user_id)
         bot.answer_callback_query(call.id, "✅ Заказ отправлен на подтверждение!")
         bot.edit_message_text(
-            "✅ Ваш заказ принят! Администратор проверит оплату и свяжется с вами.",
+            "✅ Ваш заказ принят! Администратор проверит оплату и свяжется с вами.\n\n"
+            "⏳ Обычно это занимает до 1 часа.",
             user_id, call.message.message_id,
             reply_markup=main_menu_keyboard()
+        )
+        return
+
+    # ----- ИНФОРМАЦИЯ: КАК ПРОХОДИТ СДЕЛКА -----
+    if data == "info_deal":
+        text = (
+            "📌 **Как проходит сделка**\n\n"
+            "1. Вы оформляете заказ и выбираете способ оплаты.\n"
+            "2. Оплачиваете точную сумму (карта или криптовалюта).\n"
+            "3. Нажимаете «✅ Я оплатил» – мы получаем уведомление.\n"
+            "4. В течение **1 часа** с вами свяжется наш модератор в личных сообщениях.\n"
+            "5. Модератор обсудит все детали и передаст товар.\n\n"
+            "Если у вас остались вопросы – напишите в поддержку (кнопка «Поддержка» в главном меню)."
+        )
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="back_main"))
+        bot.edit_message_text(
+            text, user_id, call.message.message_id,
+            reply_markup=kb,
+            parse_mode="Markdown"
+        )
+        return
+
+    # ----- ИНФОРМАЦИЯ: КАК ОПЛАТИТЬ -----
+    if data == "info_pay":
+        text = (
+            "💳 **Как оплатить**\n\n"
+            "**🇺🇦 Оплата картой (гривны):**\n"
+            "• Переведите точную сумму, указанную ботом, на карту:\n"
+            f"  `{CARD_NUMBER}`\n"
+            "  Получатель: End_Shop\n"
+            "• После перевода нажмите кнопку «✅ Я оплатил».\n\n"
+            "**₿ Оплата криптовалютой (USDT TRC20):**\n"
+            "• Переведите точную сумму USDT на адрес:\n"
+            f"  `{CRYPTO_WALLET}`\n"
+            "• Убедитесь, что выбрана сеть TRC20.\n"
+            "• После перевода нажмите кнопку «✅ Я оплатил».\n\n"
+            "⚠️ Внимание! Переводите ТОЧНО указанную сумму. При несовпадении сумма будет возвращена (за вычетом комиссии)."
+        )
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="back_main"))
+        bot.edit_message_text(
+            text, user_id, call.message.message_id,
+            reply_markup=kb,
+            parse_mode="Markdown"
         )
         return
 
