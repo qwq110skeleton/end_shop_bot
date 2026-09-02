@@ -1,13 +1,37 @@
 import telebot
 from telebot import types
+import time
 
-TOKEN = "8941419428:AAG0quiEbdXYTw_KeTznxAN4U04HJve8ADA"  # обязательно замените!
+# ----------------------------------------
+#  НАСТРОЙКИ (замените на свои)
+# ----------------------------------------
+TOKEN = "8941419428:AAFC_K6_Obbm5PhNhXc94bBBNko_iShFCpo"  # от @BotFather
 
+# Реквизиты для оплаты в гривнах (перевод на карту)
+CARD_NUMBER = "4874 0700 6277 8863"
+CARD_OWNER = "End_Shop"
+
+# Криптовалюта (USDT TRC20)
+CRYPTO_WALLET = "TLeks35ftpFc3NgGr2AAfzmg3dkCVyHTUz"
+
+# Курс USD/UAH (автоматический пересчёт)
+USD_TO_UAH = 45.0
+
+# ID администратора (узнайте у @userinfobot)
+ADMIN_ID = 2129276976  # замените на свой
+
+# ----------------------------------------
+#  ИНИЦИАЛИЗАЦИЯ
+# ----------------------------------------
 bot = telebot.TeleBot(TOKEN)
 
 PRODUCTS = {
-    "15": {"name": "15 Titan Temples Egg", "price": 1.00, "emoji": "🥚"},
-    "40": {"name": "40 Titan Temples Egg", "price": 1.80, "emoji": "🥚"}
+    "10":  {"name": "10 Random Titan Temples Egg", "price": 0.50, "emoji": "🥚"},
+    "25":  {"name": "25 Random Titan Temples Egg", "price": 1.00, "emoji": "🥚"},
+    "50":  {"name": "50 Random Titan Temples Egg", "price": 3.00, "emoji": "🥚"},
+    "100": {"name": "100 Random Titan Temples Egg", "price": 5.00, "emoji": "🥚"},
+    "1000":{"name": "1000 Random Titan Temples Egg", "price": 30.00, "emoji": "🥚"},
+    "secret": {"name": "1 Random Secret Egg", "price": 10.00, "emoji": "✨"}
 }
 
 carts = {}
@@ -32,9 +56,12 @@ def format_cart(cart):
     for item in cart:
         lines.append(f"{item['emoji']} {item['name']} — ${item['price']:.2f}")
     total = get_total(cart)
-    lines.append(f"\n💰 Итого: ${total:.2f}")
+    lines.append(f"\n💰 Итого: ${total:.2f}  (~ {total * USD_TO_UAH:.2f} грн)")
     return "\n".join(lines)
 
+# ----------------------------------------
+#  КЛАВИАТУРЫ
+# ----------------------------------------
 def main_menu_keyboard():
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
@@ -47,8 +74,12 @@ def main_menu_keyboard():
 def products_keyboard():
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
-        types.InlineKeyboardButton("🥚 15 яиц - $1.00", callback_data="buy_15"),
-        types.InlineKeyboardButton("🥚 40 яиц - $1.80", callback_data="buy_40"),
+        types.InlineKeyboardButton("🥚 10 яиц - $0.50", callback_data="buy_10"),
+        types.InlineKeyboardButton("🥚 25 яиц - $1.00", callback_data="buy_25"),
+        types.InlineKeyboardButton("🥚 50 яиц - $3.00", callback_data="buy_50"),
+        types.InlineKeyboardButton("🥚 100 яиц - $5.00", callback_data="buy_100"),
+        types.InlineKeyboardButton("🥚 1000 яиц - $30.00", callback_data="buy_1000"),
+        types.InlineKeyboardButton("✨ Secret Egg - $10.00", callback_data="buy_secret"),
         types.InlineKeyboardButton("⬅️ Назад", callback_data="back_main")
     )
     return kb
@@ -70,6 +101,18 @@ def support_keyboard():
     )
     return kb
 
+def payment_choice_keyboard():
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("🇺🇦 Гривны (перевод на карту)", callback_data="pay_uah"),
+        types.InlineKeyboardButton("₿ Криптовалюта (USDT)", callback_data="pay_crypto"),
+        types.InlineKeyboardButton("⬅️ Назад", callback_data="back_main")
+    )
+    return kb
+
+# ----------------------------------------
+#  ОБРАБОТЧИКИ
+# ----------------------------------------
 @bot.message_handler(commands=['start'])
 def start(message):
     user_id = message.from_user.id
@@ -94,12 +137,7 @@ def callback_handler(call):
         return
 
     if data == "steal":
-        text = (
-            "🥚 Выберите товар:\n\n"
-            "• 15 Titan Temples Egg — $1.00\n"
-            "• 40 Titan Temples Egg — $1.80\n\n"
-            "Нажмите «Купить» под нужным товаром."
-        )
+        text = "🥚 Выберите товар:\n\nНажмите «Купить» под нужным товаром."
         bot.edit_message_text(
             text, user_id, call.message.message_id,
             reply_markup=products_keyboard()
@@ -107,8 +145,8 @@ def callback_handler(call):
         return
 
     if data.startswith("buy_"):
-        product_key = data.split("_")[1]
-        product = PRODUCTS.get(product_key)
+        key = data.split("_")[1]
+        product = PRODUCTS.get(key)
         if not product:
             bot.answer_callback_query(call.id, "Товар не найден.")
             return
@@ -150,15 +188,125 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "Корзина пуста!")
             return
         total = get_total(cart)
-        bot.answer_callback_query(call.id, f"✅ Заказ оформлен! Сумма: ${total:.2f}. Спасибо!")
-        clear_cart(user_id)
+        text = (
+            f"💳 Оформление заказа\n\n"
+            f"Сумма: ${total:.2f} (~ {total * USD_TO_UAH:.2f} грн)\n\n"
+            "Выберите способ оплаты:"
+        )
         bot.edit_message_text(
-            "✅ Заказ успешно оформлен!\nСпасибо, что выбрали End_Shop.",
+            text, user_id, call.message.message_id,
+            reply_markup=payment_choice_keyboard()
+        )
+        return
+
+    # ----- ОПЛАТА В ГРИВНАХ (ПЕРЕВОД НА КАРТУ) -----
+    if data == "pay_uah":
+        cart = get_cart(user_id)
+        if not cart:
+            bot.answer_callback_query(call.id, "Корзина пуста!")
+            return
+        total = get_total(cart)
+        amount_uah = total * USD_TO_UAH
+        text = (
+            f"🇺🇦 Оплата в гривнах\n\n"
+            f"Сумма к оплате: **{amount_uah:.2f} грн**\n\n"
+            f"Переведите точную сумму на карту:\n"
+            f"`{CARD_NUMBER}`\n"
+            f"Получатель: {CARD_OWNER}\n\n"
+            f"После перевода нажмите «✅ Я оплатил»."
+        )
+        kb = types.InlineKeyboardMarkup()
+        kb.add(
+            types.InlineKeyboardButton("✅ Я оплатил", callback_data="uah_paid"),
+            types.InlineKeyboardButton("⬅️ Назад", callback_data="back_main")
+        )
+        bot.edit_message_text(
+            text, user_id, call.message.message_id,
+            reply_markup=kb,
+            parse_mode="Markdown"
+        )
+        return
+
+    if data == "uah_paid":
+        cart = get_cart(user_id)
+        if not cart:
+            bot.answer_callback_query(call.id, "Корзина уже пуста.")
+            return
+        total = get_total(cart)
+        amount_uah = total * USD_TO_UAH
+        admin_text = (
+            f"🔔 Новая оплата в гривнах!\n"
+            f"Пользователь: @{call.from_user.username or call.from_user.first_name}\n"
+            f"ID: {user_id}\n"
+            f"Сумма: {amount_uah:.2f} грн\n"
+            f"Товары: {', '.join([item['name'] for item in cart])}"
+        )
+        try:
+            bot.send_message(ADMIN_ID, admin_text)
+        except:
+            pass
+        clear_cart(user_id)
+        bot.answer_callback_query(call.id, "✅ Заказ отправлен на подтверждение!")
+        bot.edit_message_text(
+            "✅ Ваш заказ принят! Администратор проверит оплату и свяжется с вами.",
             user_id, call.message.message_id,
             reply_markup=main_menu_keyboard()
         )
         return
 
+    # ----- ОПЛАТА В КРИПТОВАЛЮТЕ (USDT TRC20) -----
+    if data == "pay_crypto":
+        cart = get_cart(user_id)
+        if not cart:
+            bot.answer_callback_query(call.id, "Корзина пуста!")
+            return
+        total = get_total(cart)
+        text = (
+            f"₿ Оплата в криптовалюте\n\n"
+            f"Сумма: **{total:.2f} USDT** (TRC20)\n\n"
+            f"Переведите точную сумму на адрес:\n"
+            f"`{CRYPTO_WALLET}`\n\n"
+            f"После перевода нажмите «✅ Я оплатил»."
+        )
+        kb = types.InlineKeyboardMarkup()
+        kb.add(
+            types.InlineKeyboardButton("✅ Я оплатил", callback_data="crypto_paid"),
+            types.InlineKeyboardButton("⬅️ Назад", callback_data="back_main")
+        )
+        bot.edit_message_text(
+            text, user_id, call.message.message_id,
+            reply_markup=kb,
+            parse_mode="Markdown"
+        )
+        return
+
+    if data == "crypto_paid":
+        cart = get_cart(user_id)
+        if not cart:
+            bot.answer_callback_query(call.id, "Корзина уже пуста.")
+            return
+        total = get_total(cart)
+        admin_text = (
+            f"🔔 Новая оплата криптовалютой!\n"
+            f"Пользователь: @{call.from_user.username or call.from_user.first_name}\n"
+            f"ID: {user_id}\n"
+            f"Сумма: ${total:.2f}\n"
+            f"Товары: {', '.join([item['name'] for item in cart])}"
+        )
+        try:
+            bot.send_message(ADMIN_ID, admin_text)
+        except:
+            pass
+        clear_cart(user_id)
+        bot.answer_callback_query(call.id, "✅ Заказ отправлен на подтверждение!")
+        bot.edit_message_text(
+            "✅ Ваш заказ принят! Администратор проверит оплату и свяжется с вами.",
+            user_id, call.message.message_id,
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
+    # ----- ПОДДЕРЖКА -----
     if data == "support":
         text = (
             "ℹ️ Поддержка End_Shop\n\n"
@@ -172,7 +320,6 @@ def callback_handler(call):
         return
 
     if data == "contact_support":
-        # 🔥 Новая логика: показываем кнопку с прямой ссылкой на чат
         kb = types.InlineKeyboardMarkup(row_width=1)
         kb.add(
             types.InlineKeyboardButton("📩 Написать в поддержку", url="https://t.me/Ysupport_end_shop"),
@@ -184,3 +331,10 @@ def callback_handler(call):
             reply_markup=kb
         )
         return
+
+# ----------------------------------------
+#  ЗАПУСК
+# ----------------------------------------
+if __name__ == "__main__":
+    print("Бот End_Shop запущен...")
+    bot.polling(none_stop=True)
