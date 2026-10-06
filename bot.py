@@ -1,6 +1,8 @@
 import html
 import logging
 import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
@@ -12,6 +14,8 @@ from telegram.ext import (
 )
 
 logging.basicConfig(level=logging.INFO)
+# httpx пишет в лог полный URL запроса вместе с токеном бота, поэтому глушим
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]   # токен от @BotFather
 ADMIN_ID = int(os.environ["ADMIN_ID"])  # твой Telegram ID (узнать: команда /id в этом боте)
@@ -105,7 +109,30 @@ async def on_admin_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+class PingHandler(BaseHTTPRequestHandler):
+    """Отвечает «ok» на любой запрос: нужен Render и внешнему пингеру."""
+
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"ok")
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
+    def log_message(self, *args):
+        pass
+
+
+def run_web_server():
+    port = int(os.environ.get("PORT", "10000"))
+    HTTPServer(("0.0.0.0", port), PingHandler).serve_forever()
+
+
 def main():
+    threading.Thread(target=run_web_server, daemon=True).start()
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("id", my_id))
